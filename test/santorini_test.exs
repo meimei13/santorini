@@ -125,5 +125,35 @@ defmodule SantoriniTest do
               }
       assert Play.move(correct(), {2,3}, {3,4}) == c
     end
+
+    test "player will select a winning space to move to" do
+      c = %Board{
+                players: [[[3, 4], [4, 4]], [[2, 5], [3, 5]]],
+                spaces: [
+                  [0, 0, 0, 0, 2],
+                  [1, 1, 2, 0, 0],
+                  [1, 0, 0, 3, 0],
+                  [0, 0, 3, 0, 0],
+                  [0, 0, 0, 1, 4]
+                ],
+                turn: 19
+              }
+      assert Play.pick_move(correct(), Play.player1(correct())) == c
+    end
+
+    test "building will build in correct spot" do
+      c = %Board{
+                players: [[[2, 3], [4, 4]], [[2, 5], [3, 5]]],
+                spaces: [
+                  [0, 0, 0, 0, 3],
+                  [1, 1, 2, 0, 0],
+                  [1, 0, 0, 3, 0],
+                  [0, 0, 3, 0, 0],
+                  [0, 0, 0, 1, 4]
+                ],
+                turn: 18
+          }
+      assert Play.build(correct(), {1, 5}) == c
+    end
   end
 end

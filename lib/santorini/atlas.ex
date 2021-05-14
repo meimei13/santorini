@@ -1,40 +1,26 @@
-#defmodule Win do
-#  alias Santorini.Player, as: Play
-#  alias Santorini.ReadWr, as: Json
-#
-#  defmacro win?(board, player) do
-#    quote do: unquote(Play.winning_move(board, Play.possible_moves(board, player))) != []
-#  end
-#end
-#
-defmodule Santorini.Player do
+defmodule Santorini.Atlas do
   @moduledoc false
-  #  import Win
-  alias Santorini.ReadWr, as: Json
-
   # xc & yc = current coordinates
   # xn & yn = new coordinates
   def move(board, {xc, yc}, {xn, yn}) do
-    p1 = player1(board)
-    p2 = player2(board)
-  
+    p1 = myplayer(board)
     
-    p1 = Enum.map(p1, fn 
+    ts = Enum.map(p1.tokens, fn
       coord when coord == [xc, yc] -> [xn, yn]
       coord -> coord
     end)
 
-    p2 = Enum.map(p2, fn 
-      coord when coord == [xc, yc] -> [xn, yn]
-      coord -> coord
-    end)
+    p = %Players{
+      card: p1.card,
+      tokens: ts
+    }
 
-    players = [p2, p1]
+    players = [p, board.players |>Enum.at(1)]
 
     %Board{
       players: players,
       spaces: board.spaces,
-      turn: board.turn + 1
+      turn: board.turn
     }
   end
 
@@ -50,51 +36,52 @@ defmodule Santorini.Player do
     s = List.replace_at(board.spaces, x-1, row)
 
     %Board{
-      players: board.players,
+      players: [board.players|>Enum.at(1), board.players|>Enum.at(0)],
       spaces: s,
-      turn: board.turn
+      turn: board.turn + 1
     } 
   end
 
-  # make the first move
-  # don't move more than two spaces from the first guy
-  def first_movep1(board) do
+  def buildlvl4(board, {x, y}) do
+    row = List.replace_at(Enum.at(board.spaces, x-1), y-1, 4)
+    s = List.replace_at(board.spaces, x-1, row)
+    
+    %Board{
+      players: [board.players|>Enum.at(1), board.players|>Enum.at(0)],
+      spaces: s,
+      turn: board.turn + 1
+    } 
+  end
+
+  def first_move(board) do
     co1 = Enum.random(1..5)
     co2 = Enum.random(1..5)
     co3 = Enum.random((Enum.map(bound(co1-2)..(bound(co1+2)), fn x -> x end) -- [co1, co2]))
     co4 = Enum.random((Enum.map(bound(co1-2)..(bound(co1+2)), fn x -> x end) -- [co1, co2]))
+
+    opponent = board.players|>Enum.at(1)
+
+    token = case opponent.tokens do
+      nil -> [[co1, co2],[co3, co4]]
+      x -> Enum.map(x, fn
+        coord when coord == [co1, co2] -> [bound(co1+1), bound(co2-1)]
+        _ -> [co1, co2]  
+        end)
+    end
+
+    token = [Enum.at(token, 0), [co3, co4]]
+    p = myplayer(board)
     players = [
-        [co1, co2],
-        [co3, co4]
+      opponent,
+      %Players{
+        card: p.card,
+        tokens: token
+      }
     ]
 
     %Board{
       players: players,
       spaces: board.spaces,
-      turn: board.turn + 1
-    }
-  end
-
-  # make the first move for p2
-  # don't move more than two spaces from the first guy or the first player
-  # (guy in this context is the first worker p2 puts down)
-  def first_movep2(board) do
-    p1 = board.players
-    co1 = Enum.at((for i <- p1, j <- i, do: bound(j + 1)), 0)
-    co2 = Enum.at((for i <- p1, j <- i, do: bound(j - 3)), 0)
-    co3 = Enum.random((Enum.map(bound(co1-2)..(bound(co1+2)), fn x -> x end) -- [co1, co2]))
-    co4 = Enum.random((Enum.map(bound(co1-2)..(bound(co1+2)), fn x -> x end) -- [co1, co2]))
-    players = [
-      p1,
-      [
-        [co1, co2],
-        [co3, co4]
-      ]
-    ]
-
-    %Board{
-      players: players, 
-      spaces: board.spaces, 
       turn: board.turn + 1
     }
   end
@@ -114,26 +101,25 @@ defmodule Santorini.Player do
   # player has the position of two workers, eg. [[2,3],[4,4]]
   def pick_move(board, player) do
     cond do
-      player == [[],[]] -> 
-        if player1(board) == [[],[]] do
-          first_movep1(board)
-        else
-          first_movep2(board)
-        end
-      win?(board, Enum.fetch!(player, 0)) -> 
-        m = possible_moves(board, Enum.fetch!(player, 0))
-        move(board, Enum.fetch!(player, 0), winning_move(board, m))
-      win?(board, Enum.fetch!(player, 1)) ->
-        m = possible_moves(board, Enum.fetch!(player, 1))
-        move(board, Enum.fetch!(player, 1), winning_move(board, m))
-      true -> r = Enum.fetch!(player, 0)
+      player.tokens == [[],[]] -> first_move(board) 
+      win?(board, List.to_tuple(Enum.at(player.tokens, 0))) -> 
+        m = possible_moves(board, player)
+        move(board, player, winning_move(board, m))
+      true -> r = player
         move(board, r, possible_moves(board, r))
     end
   end
 
   def pick_build(board, player) do
-    builds = possible_builds(board, List.to_tuple(Enum.fetch!(player, 0)))
-    build(board, List.to_tuple(Enum.random(builds)))
+    builds = possible_builds(board, List.to_tuple(Enum.at(player.tokens, 0)))
+    opponent = board.players|>Enum.at(1)
+
+    if win?(board, List.to_tuple(Enum.at(opponent.tokens, 0))) do
+      buildlvl4(board, List.to_tuple(Enum.random(builds)))
+    else
+      build(board, List.to_tuple(Enum.random(builds)))
+    end
+    
   end
 
   def rand_guy do
@@ -149,22 +135,15 @@ defmodule Santorini.Player do
     end
   end
 
-  def player1(board) do
-    if board.players == nil do
-      [[],[]]
+  def myplayer(board) do
+    p = board.players |>Enum.at(0)
+    if p.tokens == nil do
+      %Players{
+        card: p.card,
+        tokens: [[],[]]
+      }
     else
-      case Enum.fetch(Json.players(board), 0) do
-        {:ok, pos} -> pos
-        {:error, _} -> [[],[]]
-      end
-    end
-  end
-
-  # control flow - don't call this function until the first player has definitely moved :D  
-  def player2(board) do
-    case Enum.fetch(Json.players(board), 1) do
-      {:ok, pos} -> pos
-      {:error, _} -> [player1(board),[]]
+      p
     end
   end
 
@@ -174,7 +153,9 @@ defmodule Santorini.Player do
     # my level
     level = get_level(board.spaces, {x, y})
     d = delta({x, y})
-    players = Enum.flat_map(board.players, fn x -> x end)
+    p1 = myplayer(board)
+    opponent = board.players|>Enum.at(1)
+    players = Enum.flat_map([p1.tokens, opponent.tokens], fn x -> x end)
 
     # check levels are not higher than one above -- will also remove out of bounds squares, because their level is nil
     moves = Enum.reject(d, fn [i, j] -> get_level(board.spaces, {i, j}) > level+1 end)
@@ -189,9 +170,12 @@ defmodule Santorini.Player do
     possible_moves(board, List.to_tuple(coord))
   end
 
-  def possible_builds(board, {x, y}) do
+  def possible_builds(board, player) do
+    {x, y} = Enum.at(player.tokens, 0)
     d = delta({x, y})
-    players = Enum.flat_map(board.players, fn x -> x end)
+    p1 = myplayer(board)
+    opponent = board.players|>Enum.at(1)
+    players = Enum.flat_map([p1.tokens, opponent.tokens], fn x -> x end)
     # check levels are not == 4
     moves = Enum.reject(d, fn [i, j] -> get_level(board.spaces, {i, j}) === 4 end)
     # remove spaces another player is on
